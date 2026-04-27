@@ -54,7 +54,7 @@ docker-compose up -d eebus-bridge
 Alternativ als Binary:
 
 ```bash
-./eebus-bridge --config config.yaml
+./eebus-bridge --config bridge-config.yaml
 ```
 
 ## Einrichtung

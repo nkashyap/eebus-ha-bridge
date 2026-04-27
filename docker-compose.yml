@@ -7,7 +7,7 @@ services:
       - "4712:4712"
     volumes:
       - eebus-data:/data
-      - ./eebus-bridge/config.yaml:/etc/eebus-bridge/config.yaml:ro
+      - ./eebus-bridge/bridge-config.yaml:/etc/eebus-bridge/config.yaml:ro
     network_mode: host
     restart: unless-stopped
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Bump add-on and integration versions to align rebuilt artifacts with latest fixes
+- Rename bridge sample runtime config to `bridge-config.yaml` to avoid Supervisor manifest parsing warnings
+
 ## 0.1.1
 
 - Add optional `debug_events` add-on setting to trace inbound EEBUS callback/use-case events
