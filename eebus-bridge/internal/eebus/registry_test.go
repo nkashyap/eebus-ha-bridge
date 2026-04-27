@@ -3,8 +3,13 @@ package eebus_test
 import (
 	"testing"
 
+	spineapi "github.com/enbility/spine-go/api"
 	"github.com/volschin/eebus-bridge/internal/eebus"
 )
+
+type stubEntity struct {
+	spineapi.EntityRemoteInterface
+}
 
 func TestRegistryAddAndLookup(t *testing.T) {
 	reg := eebus.NewDeviceRegistry()
@@ -43,5 +48,17 @@ func TestRegistryListDevices(t *testing.T) {
 	devices := reg.ListDevices()
 	if len(devices) != 2 {
 		t.Errorf("len(devices) = %d, want 2", len(devices))
+	}
+}
+
+func TestRegistryFirstAvailableEntity(t *testing.T) {
+	reg := eebus.NewDeviceRegistry()
+	entity := &stubEntity{}
+
+	reg.UpsertObservation("ski-1", nil, entity, "monitoring")
+
+	got := reg.FirstAvailableEntity()
+	if got == nil {
+		t.Fatal("FirstAvailableEntity() = nil, want non-nil")
 	}
 }

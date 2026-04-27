@@ -1,6 +1,8 @@
 package usecases
 
 import (
+	"errors"
+
 	eebusapi "github.com/enbility/eebus-go/api"
 	mampc "github.com/enbility/eebus-go/usecases/ma/mpc"
 	spineapi "github.com/enbility/spine-go/api"
@@ -15,6 +17,8 @@ type MonitoringWrapper struct {
 	registry *eebus.DeviceRegistry
 }
 
+var errMonitoringNotInitialized = errors.New("monitoring use case not initialized")
+
 // NewMonitoringWrapper creates a new MonitoringWrapper. Call Setup() before using the use case.
 func NewMonitoringWrapper(bus *eebus.EventBus, registry *eebus.DeviceRegistry) *MonitoringWrapper {
 	return &MonitoringWrapper{bus: bus, registry: registry}
@@ -22,6 +26,9 @@ func NewMonitoringWrapper(bus *eebus.EventBus, registry *eebus.DeviceRegistry) *
 
 // Setup initialises the underlying eebus-go MPC use case for the given local entity.
 func (w *MonitoringWrapper) Setup(localEntity spineapi.EntityLocalInterface) {
+	if localEntity == nil {
+		return
+	}
 	w.uc = mampc.NewMPC(localEntity, w.HandleEvent)
 }
 
@@ -58,40 +65,63 @@ func (w *MonitoringWrapper) HandleEvent(ski string, device spineapi.DeviceRemote
 	default:
 		return
 	}
-	w.bus.Publish(eebus.Event{SKI: ski, Type: eventType})
+	if w.bus != nil {
+		w.bus.Publish(eebus.Event{SKI: ski, Type: eventType})
+	}
 }
 
 // Power returns the total momentary active power for the given remote entity.
 func (w *MonitoringWrapper) Power(entity spineapi.EntityRemoteInterface) (float64, error) {
+	if w.uc == nil {
+		return 0, errMonitoringNotInitialized
+	}
 	return w.uc.Power(entity)
 }
 
 // PowerPerPhase returns the phase-specific momentary active power.
 func (w *MonitoringWrapper) PowerPerPhase(entity spineapi.EntityRemoteInterface) ([]float64, error) {
+	if w.uc == nil {
+		return nil, errMonitoringNotInitialized
+	}
 	return w.uc.PowerPerPhase(entity)
 }
 
 // EnergyConsumed returns the total consumed energy.
 func (w *MonitoringWrapper) EnergyConsumed(entity spineapi.EntityRemoteInterface) (float64, error) {
+	if w.uc == nil {
+		return 0, errMonitoringNotInitialized
+	}
 	return w.uc.EnergyConsumed(entity)
 }
 
 // EnergyProduced returns the total produced/fed-in energy.
 func (w *MonitoringWrapper) EnergyProduced(entity spineapi.EntityRemoteInterface) (float64, error) {
+	if w.uc == nil {
+		return 0, errMonitoringNotInitialized
+	}
 	return w.uc.EnergyProduced(entity)
 }
 
 // CurrentPerPhase returns the phase-specific momentary current.
 func (w *MonitoringWrapper) CurrentPerPhase(entity spineapi.EntityRemoteInterface) ([]float64, error) {
+	if w.uc == nil {
+		return nil, errMonitoringNotInitialized
+	}
 	return w.uc.CurrentPerPhase(entity)
 }
 
 // VoltagePerPhase returns the phase-specific voltage.
 func (w *MonitoringWrapper) VoltagePerPhase(entity spineapi.EntityRemoteInterface) ([]float64, error) {
+	if w.uc == nil {
+		return nil, errMonitoringNotInitialized
+	}
 	return w.uc.VoltagePerPhase(entity)
 }
 
 // Frequency returns the power network frequency.
 func (w *MonitoringWrapper) Frequency(entity spineapi.EntityRemoteInterface) (float64, error) {
+	if w.uc == nil {
+		return 0, errMonitoringNotInitialized
+	}
 	return w.uc.Frequency(entity)
 }

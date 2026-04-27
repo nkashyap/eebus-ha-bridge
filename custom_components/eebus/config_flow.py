@@ -20,6 +20,7 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+CONFIG_RPC_TIMEOUT = 8
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
@@ -60,8 +61,7 @@ class EebusConfigFlow(ConfigFlow, domain=DOMAIN):
                 channel = grpc.aio.insecure_channel(f"{self._host}:{self._port}")
                 from . import proto_stubs
                 stub = proto_stubs.DeviceServiceStub(channel)
-                await stub.GetStatus(proto_stubs.Empty())
-                await channel.close()
+                await stub.GetStatus(proto_stubs.Empty(), timeout=CONFIG_RPC_TIMEOUT)
                 return await self.async_step_device()
             except Exception as err:
                 _LOGGER.exception(
@@ -70,6 +70,8 @@ class EebusConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._port,
                 )
                 errors["base"] = "cannot_connect"
+            finally:
+                await channel.close()
 
         return self.async_show_form(
             step_id="user",
@@ -113,8 +115,7 @@ class EebusConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
                 from . import proto_stubs
                 stub = proto_stubs.DeviceServiceStub(channel)
-                await stub.GetStatus(proto_stubs.Empty())
-                await channel.close()
+                await stub.GetStatus(proto_stubs.Empty(), timeout=CONFIG_RPC_TIMEOUT)
 
                 return self.async_update_reload_and_abort(
                     self._get_reconfigure_entry(),
@@ -130,6 +131,8 @@ class EebusConfigFlow(ConfigFlow, domain=DOMAIN):
                     user_input[CONF_GRPC_PORT],
                 )
                 errors["base"] = "cannot_connect"
+            finally:
+                await channel.close()
 
         entry = self._get_reconfigure_entry()
         return self.async_show_form(

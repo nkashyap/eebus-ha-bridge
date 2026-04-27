@@ -1,6 +1,7 @@
 package usecases
 
 import (
+	"errors"
 	"time"
 
 	eebusapi "github.com/enbility/eebus-go/api"
@@ -18,6 +19,8 @@ type LPCWrapper struct {
 	registry *eebus.DeviceRegistry
 }
 
+var errLPCNotInitialized = errors.New("lpc use case not initialized")
+
 // NewLPCWrapper creates a new LPCWrapper. Call Setup() before using the use case.
 func NewLPCWrapper(bus *eebus.EventBus, registry *eebus.DeviceRegistry) *LPCWrapper {
 	return &LPCWrapper{bus: bus, registry: registry}
@@ -25,6 +28,9 @@ func NewLPCWrapper(bus *eebus.EventBus, registry *eebus.DeviceRegistry) *LPCWrap
 
 // Setup initialises the underlying eebus-go LPC use case for the given local entity.
 func (w *LPCWrapper) Setup(localEntity spineapi.EntityLocalInterface) {
+	if localEntity == nil {
+		return
+	}
 	w.uc = eglpc.NewLPC(localEntity, w.HandleEvent)
 }
 
@@ -53,38 +59,58 @@ func (w *LPCWrapper) HandleEvent(ski string, device spineapi.DeviceRemoteInterfa
 	default:
 		return
 	}
-	w.bus.Publish(eebus.Event{SKI: ski, Type: eventType})
+	if w.bus != nil {
+		w.bus.Publish(eebus.Event{SKI: ski, Type: eventType})
+	}
 }
 
 // ConsumptionLimit returns the current load control limit for the given remote entity.
 func (w *LPCWrapper) ConsumptionLimit(entity spineapi.EntityRemoteInterface) (ucapi.LoadLimit, error) {
+	if w.uc == nil {
+		return ucapi.LoadLimit{}, errLPCNotInitialized
+	}
 	return w.uc.ConsumptionLimit(entity)
 }
 
 // WriteConsumptionLimit sends a new consumption limit to the given remote entity.
 func (w *LPCWrapper) WriteConsumptionLimit(entity spineapi.EntityRemoteInterface, limit ucapi.LoadLimit) error {
+	if w.uc == nil {
+		return errLPCNotInitialized
+	}
 	_, err := w.uc.WriteConsumptionLimit(entity, limit, nil)
 	return err
 }
 
 // FailsafeConsumptionActivePowerLimit returns the failsafe active power limit.
 func (w *LPCWrapper) FailsafeConsumptionActivePowerLimit(entity spineapi.EntityRemoteInterface) (float64, error) {
+	if w.uc == nil {
+		return 0, errLPCNotInitialized
+	}
 	return w.uc.FailsafeConsumptionActivePowerLimit(entity)
 }
 
 // WriteFailsafeConsumptionActivePowerLimit sends a new failsafe active power limit.
 func (w *LPCWrapper) WriteFailsafeConsumptionActivePowerLimit(entity spineapi.EntityRemoteInterface, value float64) error {
+	if w.uc == nil {
+		return errLPCNotInitialized
+	}
 	_, err := w.uc.WriteFailsafeConsumptionActivePowerLimit(entity, value)
 	return err
 }
 
 // FailsafeDurationMinimum returns the minimum failsafe duration.
 func (w *LPCWrapper) FailsafeDurationMinimum(entity spineapi.EntityRemoteInterface) (time.Duration, error) {
+	if w.uc == nil {
+		return 0, errLPCNotInitialized
+	}
 	return w.uc.FailsafeDurationMinimum(entity)
 }
 
 // WriteFailsafeDurationMinimum sends a new minimum failsafe duration (must be 2h–24h).
 func (w *LPCWrapper) WriteFailsafeDurationMinimum(entity spineapi.EntityRemoteInterface, duration time.Duration) error {
+	if w.uc == nil {
+		return errLPCNotInitialized
+	}
 	_, err := w.uc.WriteFailsafeDurationMinimum(entity, duration)
 	return err
 }
@@ -92,5 +118,8 @@ func (w *LPCWrapper) WriteFailsafeDurationMinimum(entity spineapi.EntityRemoteIn
 // ConsumptionNominalMax returns the nominal maximum active power the controllable system
 // can consume.
 func (w *LPCWrapper) ConsumptionNominalMax(entity spineapi.EntityRemoteInterface) (float64, error) {
+	if w.uc == nil {
+		return 0, errLPCNotInitialized
+	}
 	return w.uc.ConsumptionNominalMax(entity)
 }

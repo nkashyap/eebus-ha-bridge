@@ -112,3 +112,16 @@ func (r *DeviceRegistry) FirstEntity(ski string) spineapi.EntityRemoteInterface 
 	}
 	return info.RemoteEntities[0]
 }
+
+// FirstAvailableEntity returns the first entity from any known device.
+// This is used as a fallback when a client-selected SKI has no mapped entity yet.
+func (r *DeviceRegistry) FirstAvailableEntity() spineapi.EntityRemoteInterface {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, info := range r.devices {
+		if len(info.RemoteEntities) > 0 {
+			return info.RemoteEntities[0]
+		}
+	}
+	return nil
+}

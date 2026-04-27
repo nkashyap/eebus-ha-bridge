@@ -25,6 +25,9 @@ func NewLPCService(lpc *usecases.LPCWrapper, bus *eebus.EventBus, registry *eebu
 }
 
 func (s *LPCService) GetConsumptionLimit(_ context.Context, req *pb.DeviceRequest) (*pb.LoadLimit, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
 	if s.lpc == nil {
 		return nil, status.Error(codes.Unavailable, "LPC use case not initialized")
 	}
@@ -40,6 +43,9 @@ func (s *LPCService) GetConsumptionLimit(_ context.Context, req *pb.DeviceReques
 }
 
 func (s *LPCService) WriteConsumptionLimit(_ context.Context, req *pb.WriteLoadLimitRequest) (*pb.Empty, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
 	if s.lpc == nil {
 		return nil, status.Error(codes.Unavailable, "LPC use case not initialized")
 	}
@@ -60,6 +66,9 @@ func (s *LPCService) WriteConsumptionLimit(_ context.Context, req *pb.WriteLoadL
 }
 
 func (s *LPCService) GetFailsafeLimit(_ context.Context, req *pb.DeviceRequest) (*pb.FailsafeLimit, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
 	if s.lpc == nil {
 		return nil, status.Error(codes.Unavailable, "LPC use case not initialized")
 	}
@@ -82,6 +91,9 @@ func (s *LPCService) GetFailsafeLimit(_ context.Context, req *pb.DeviceRequest) 
 }
 
 func (s *LPCService) WriteFailsafeLimit(_ context.Context, req *pb.WriteFailsafeLimitRequest) (*pb.Empty, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
 	if s.lpc == nil {
 		return nil, status.Error(codes.Unavailable, "LPC use case not initialized")
 	}
@@ -113,6 +125,9 @@ func (s *LPCService) GetHeartbeatStatus(_ context.Context, _ *pb.DeviceRequest) 
 }
 
 func (s *LPCService) GetConsumptionNominalMax(_ context.Context, req *pb.DeviceRequest) (*pb.PowerValue, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
 	if s.lpc == nil {
 		return nil, status.Error(codes.Unavailable, "LPC use case not initialized")
 	}
@@ -172,7 +187,13 @@ func convertLoadLimit(l ucapi.LoadLimit) *pb.LoadLimit {
 }
 
 func (s *LPCService) resolveEntity(ski string) (spineapi.EntityRemoteInterface, error) {
+	if s.registry == nil {
+		return nil, status.Error(codes.Unavailable, "device registry not initialized")
+	}
 	entity := s.registry.FirstEntity(ski)
+	if entity == nil && ski == "" {
+		entity = s.registry.FirstAvailableEntity()
+	}
 	if entity == nil {
 		return nil, status.Errorf(codes.NotFound, "no remote entity found for ski %s", ski)
 	}

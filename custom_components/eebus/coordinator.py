@@ -16,6 +16,12 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 _LOGGER = logging.getLogger(__name__)
 
 POLL_INTERVAL = timedelta(seconds=30)
+RPC_TIMEOUT = 10
+
+
+def _is_unimplemented(err: grpc.aio.AioRpcError) -> bool:
+    """Return True when gRPC reports method/use case is not implemented."""
+    return err.code() == grpc.StatusCode.UNIMPLEMENTED
 
 
 class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -41,6 +47,9 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._channel: grpc.aio.Channel | None = None
         self._stream_tasks: list[asyncio.Task] = []
         self._was_unavailable: bool = False
+        self._heartbeat_supported: bool | None = None
+        self._lpc_supported: bool | None = None
+        self._failsafe_supported: bool | None = None
 
     async def _ensure_channel(self) -> grpc.aio.Channel:
         """Create or return existing gRPC channel."""
@@ -66,7 +75,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             try:
                 power = await monitoring_stub.GetPowerConsumption(
-                    proto_stubs.DeviceRequest(ski=self.ski)
+                    proto_stubs.DeviceRequest(ski=self.ski), timeout=RPC_TIMEOUT
                 )
                 data["power_watts"] = power.watts
             except grpc.aio.AioRpcError:
@@ -77,7 +86,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             try:
                 measurements = await monitoring_stub.GetMeasurements(
-                    proto_stubs.DeviceRequest(ski=self.ski)
+                    proto_stubs.DeviceRequest(ski=self.ski), timeout=RPC_TIMEOUT
                 )
                 scoped_energy = self._extract_scoped_energy_kwh(measurements.measurements)
                 data["energy_consumed_heating_kwh"] = scoped_energy["heating"]
@@ -92,7 +101,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             try:
                 energy = await monitoring_stub.GetEnergyConsumed(
-                    proto_stubs.DeviceRequest(ski=self.ski)
+                    proto_stubs.DeviceRequest(ski=self.ski), timeout=RPC_TIMEOUT
                 )
                 data["energy_consumed_kwh"] = energy.kilowatt_hours
             except grpc.aio.AioRpcError:
@@ -104,27 +113,58 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 lpc_stub = proto_stubs.LPCServiceStub(channel)
                 limit = await lpc_stub.GetConsumptionLimit(
-                    proto_stubs.DeviceRequest(ski=self.ski)
+                    proto_stubs.DeviceRequest(ski=self.ski), timeout=RPC_TIMEOUT
                 )
                 data["consumption_limit"] = {
                     "value_watts": limit.value_watts,
                     "is_active": limit.is_active,
                     "is_changeable": limit.is_changeable,
                 }
-            except grpc.aio.AioRpcError:
+                self._lpc_supported = True
+            except grpc.aio.AioRpcError as err:
                 data["consumption_limit"] = None
+                if _is_unimplemented(err):
+                    self._lpc_supported = False
+
+            try:
+                lpc_stub = proto_stubs.LPCServiceStub(channel)
+                failsafe = await lpc_stub.GetFailsafeLimit(
+                    proto_stubs.DeviceRequest(ski=self.ski), timeout=RPC_TIMEOUT
+                )
+                data["failsafe_limit"] = {
+                    "value_watts": failsafe.value_watts,
+                    "duration_minimum_seconds": failsafe.duration_minimum_seconds,
+                }
+                self._failsafe_supported = True
+            except grpc.aio.AioRpcError as err:
+                data["failsafe_limit"] = None
+                if _is_unimplemented(err):
+                    self._failsafe_supported = False
 
             try:
                 lpc_stub = proto_stubs.LPCServiceStub(channel)
                 hb = await lpc_stub.GetHeartbeatStatus(
-                    proto_stubs.DeviceRequest(ski=self.ski)
+                    proto_stubs.DeviceRequest(ski=self.ski), timeout=RPC_TIMEOUT
                 )
                 data["heartbeat_status"] = {
                     "running": hb.running,
                     "within_duration": hb.within_duration,
                 }
-            except grpc.aio.AioRpcError:
+                data["heartbeat_supported"] = True
+                self._heartbeat_supported = True
+            except grpc.aio.AioRpcError as err:
                 data["heartbeat_status"] = None
+                data["heartbeat_supported"] = self._heartbeat_supported
+                if _is_unimplemented(err):
+                    data["heartbeat_supported"] = False
+                    self._heartbeat_supported = False
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("Failed to read heartbeat status")
+                data["heartbeat_status"] = None
+                data["heartbeat_supported"] = self._heartbeat_supported
+
+            data["lpc_supported"] = self._lpc_supported
+            data["failsafe_supported"] = self._failsafe_supported
 
             if self._was_unavailable:
                 _LOGGER.info("EEBUS bridge connection restored at %s:%s", self.host, self.port)
@@ -175,22 +215,44 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         channel = await self._ensure_channel()
         from . import proto_stubs
         stub = proto_stubs.LPCServiceStub(channel)
-        await stub.WriteConsumptionLimit(
-            proto_stubs.WriteLoadLimitRequest(
-                ski=self.ski, value_watts=value_watts, is_active=True
+        try:
+            await stub.WriteConsumptionLimit(
+                proto_stubs.WriteLoadLimitRequest(
+                    ski=self.ski, value_watts=value_watts, is_active=True
+                ),
+                timeout=RPC_TIMEOUT,
             )
-        )
+            self._lpc_supported = True
+        except grpc.aio.AioRpcError as err:
+            if _is_unimplemented(err):
+                self._lpc_supported = False
+                _LOGGER.info(
+                    "LPC write unsupported for SKI %s: %s", self.ski, err.details()
+                )
+                return
+            raise
 
     async def async_write_failsafe_limit(self, value_watts: float) -> None:
         """Write failsafe limit via gRPC."""
         channel = await self._ensure_channel()
         from . import proto_stubs
         stub = proto_stubs.LPCServiceStub(channel)
-        await stub.WriteFailsafeLimit(
-            proto_stubs.WriteFailsafeLimitRequest(
-                ski=self.ski, value_watts=value_watts
+        try:
+            await stub.WriteFailsafeLimit(
+                proto_stubs.WriteFailsafeLimitRequest(
+                    ski=self.ski, value_watts=value_watts
+                ),
+                timeout=RPC_TIMEOUT,
             )
-        )
+            self._failsafe_supported = True
+        except grpc.aio.AioRpcError as err:
+            if _is_unimplemented(err):
+                self._failsafe_supported = False
+                _LOGGER.info(
+                    "Failsafe write unsupported for SKI %s: %s", self.ski, err.details()
+                )
+                return
+            raise
 
     async def async_set_lpc_active(self, active: bool) -> None:
         """Activate or deactivate LPC limit via gRPC."""
@@ -198,29 +260,62 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         from . import proto_stubs
         stub = proto_stubs.LPCServiceStub(channel)
         current = await stub.GetConsumptionLimit(
-            proto_stubs.DeviceRequest(ski=self.ski)
+            proto_stubs.DeviceRequest(ski=self.ski), timeout=RPC_TIMEOUT
         )
-        await stub.WriteConsumptionLimit(
-            proto_stubs.WriteLoadLimitRequest(
-                ski=self.ski,
-                value_watts=current.value_watts,
-                is_active=active,
+        try:
+            await stub.WriteConsumptionLimit(
+                proto_stubs.WriteLoadLimitRequest(
+                    ski=self.ski,
+                    value_watts=current.value_watts,
+                    is_active=active,
+                ),
+                timeout=RPC_TIMEOUT,
             )
-        )
+            self._lpc_supported = True
+        except grpc.aio.AioRpcError as err:
+            if _is_unimplemented(err):
+                self._lpc_supported = False
+                _LOGGER.info(
+                    "LPC activation unsupported for SKI %s: %s", self.ski, err.details()
+                )
+                return
+            raise
 
     async def async_start_heartbeat(self) -> None:
         """Start EEBUS heartbeat via gRPC."""
         channel = await self._ensure_channel()
         from . import proto_stubs
         stub = proto_stubs.LPCServiceStub(channel)
-        await stub.StartHeartbeat(proto_stubs.DeviceRequest(ski=self.ski))
+        try:
+            await stub.StartHeartbeat(
+                proto_stubs.DeviceRequest(ski=self.ski), timeout=RPC_TIMEOUT
+            )
+        except grpc.aio.AioRpcError as err:
+            if _is_unimplemented(err):
+                self._heartbeat_supported = False
+                _LOGGER.info(
+                    "Heartbeat start unsupported for SKI %s: %s", self.ski, err.details()
+                )
+                return
+            raise
 
     async def async_stop_heartbeat(self) -> None:
         """Stop EEBUS heartbeat via gRPC."""
         channel = await self._ensure_channel()
         from . import proto_stubs
         stub = proto_stubs.LPCServiceStub(channel)
-        await stub.StopHeartbeat(proto_stubs.DeviceRequest(ski=self.ski))
+        try:
+            await stub.StopHeartbeat(
+                proto_stubs.DeviceRequest(ski=self.ski), timeout=RPC_TIMEOUT
+            )
+        except grpc.aio.AioRpcError as err:
+            if _is_unimplemented(err):
+                self._heartbeat_supported = False
+                _LOGGER.info(
+                    "Heartbeat stop unsupported for SKI %s: %s", self.ski, err.details()
+                )
+                return
+            raise
 
     async def async_shutdown(self) -> None:
         """Close gRPC channel and cancel stream tasks."""

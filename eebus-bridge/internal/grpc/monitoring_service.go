@@ -25,6 +25,9 @@ func NewMonitoringService(monitoring *usecases.MonitoringWrapper, bus *eebus.Eve
 }
 
 func (s *MonitoringService) GetPowerConsumption(_ context.Context, req *pb.DeviceRequest) (*pb.PowerMeasurement, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
 	if s.monitoring == nil {
 		return nil, status.Error(codes.Unavailable, "monitoring use case not initialized")
 	}
@@ -43,6 +46,9 @@ func (s *MonitoringService) GetPowerConsumption(_ context.Context, req *pb.Devic
 }
 
 func (s *MonitoringService) GetEnergyConsumed(_ context.Context, req *pb.DeviceRequest) (*pb.EnergyMeasurement, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
 	if s.monitoring == nil {
 		return nil, status.Error(codes.Unavailable, "monitoring use case not initialized")
 	}
@@ -61,6 +67,9 @@ func (s *MonitoringService) GetEnergyConsumed(_ context.Context, req *pb.DeviceR
 }
 
 func (s *MonitoringService) GetMeasurements(_ context.Context, req *pb.DeviceRequest) (*pb.MeasurementList, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "request is required")
+	}
 	if s.monitoring == nil {
 		return nil, status.Error(codes.Unavailable, "monitoring use case not initialized")
 	}
@@ -136,6 +145,9 @@ func (s *MonitoringService) resolveEntity(ski string) (spineapi.EntityRemoteInte
 		return nil, status.Error(codes.Unavailable, "device registry not initialized")
 	}
 	entity := s.registry.FirstEntity(ski)
+	if entity == nil && ski == "" {
+		entity = s.registry.FirstAvailableEntity()
+	}
 	if entity == nil {
 		return nil, status.Errorf(codes.NotFound, "no remote entity found for ski %s", ski)
 	}

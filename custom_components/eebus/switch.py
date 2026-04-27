@@ -53,6 +53,15 @@ class EebusLPCActiveSwitch(EebusEntity, SwitchEntity):
             return None
         return limit.get("is_active")
 
+    @property
+    def available(self) -> bool:
+        """Disable switch when LPC is known to be unsupported."""
+        if not super().available:
+            return False
+        if self.coordinator.data is None:
+            return False
+        return self.coordinator.data.get("lpc_supported") is not False
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Activate LPC limit."""
         await self.coordinator.async_set_lpc_active(True)
@@ -88,6 +97,15 @@ class EebusHeartbeatSwitch(EebusEntity, SwitchEntity):
         if hb is None:
             return None
         return hb.get("running")
+
+    @property
+    def available(self) -> bool:
+        """Disable switch when heartbeat use case is not supported."""
+        if not super().available:
+            return False
+        if self.coordinator.data is None:
+            return False
+        return self.coordinator.data.get("heartbeat_supported", True)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Start heartbeat."""

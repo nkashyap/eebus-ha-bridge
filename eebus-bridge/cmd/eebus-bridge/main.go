@@ -55,6 +55,9 @@ func main() {
 	}
 
 	localEntity := bridgeSvc.LocalEntity()
+	if localEntity == nil {
+		log.Fatal("local CEM entity is not available")
+	}
 	lpcWrapper.Setup(localEntity)
 	monitoringWrapper.Setup(localEntity)
 
