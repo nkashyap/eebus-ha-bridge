@@ -1,0 +1,32 @@
+name: EEBUS Bridge
+slug: eebus_bridge
+description: Local EEBUS bridge service for Vaillant VR920/VR921/VR940f gateways
+version: "0.1.0"
+url: https://github.com/nkashyap/eebus-ha-bridge
+startup: services
+boot: auto
+host_network: true
+init: false
+stage: experimental
+arch:
+  - aarch64
+  - amd64
+  - armv7
+map:
+  - addon_config:rw
+options:
+  grpc_port: 50051
+  eebus_port: 4712
+  vendor: HomeAssistant
+  brand: eebus-bridge
+  model: eebus-bridge
+  serial: ha-001
+  auto_generate_certificates: true
+schema:
+  grpc_port: port
+  eebus_port: port
+  vendor: str
+  brand: str
+  model: str
+  serial: str
+  auto_generate_certificates: bool
