@@ -2,6 +2,7 @@ package usecases
 
 import (
 	"errors"
+	"log"
 
 	eebusapi "github.com/enbility/eebus-go/api"
 	mampc "github.com/enbility/eebus-go/usecases/ma/mpc"
@@ -15,13 +16,14 @@ type MonitoringWrapper struct {
 	uc       *mampc.MPC
 	bus      *eebus.EventBus
 	registry *eebus.DeviceRegistry
+	debug    bool
 }
 
 var errMonitoringNotInitialized = errors.New("monitoring use case not initialized")
 
 // NewMonitoringWrapper creates a new MonitoringWrapper. Call Setup() before using the use case.
-func NewMonitoringWrapper(bus *eebus.EventBus, registry *eebus.DeviceRegistry) *MonitoringWrapper {
-	return &MonitoringWrapper{bus: bus, registry: registry}
+func NewMonitoringWrapper(bus *eebus.EventBus, registry *eebus.DeviceRegistry, debugEvents bool) *MonitoringWrapper {
+	return &MonitoringWrapper{bus: bus, registry: registry, debug: debugEvents}
 }
 
 // Setup initialises the underlying eebus-go MPC use case for the given local entity.
@@ -40,6 +42,10 @@ func (w *MonitoringWrapper) UseCase() *mampc.MPC {
 // HandleEvent is the api.EntityEventCallback passed to eebus-go. It translates
 // eebus-go event types to internal EventBus events.
 func (w *MonitoringWrapper) HandleEvent(ski string, device spineapi.DeviceRemoteInterface, entity spineapi.EntityRemoteInterface, event eebusapi.EventType) {
+	if w.debug {
+		log.Printf("[DEBUG] EEBUS monitoring event received: ski=%s event=%s", ski, event)
+	}
+
 	if w.registry != nil {
 		w.registry.UpsertObservation(ski, device, entity, "monitoring")
 	}

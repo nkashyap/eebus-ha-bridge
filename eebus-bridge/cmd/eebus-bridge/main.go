@@ -47,8 +47,8 @@ func main() {
 		log.Fatalf("creating bridge service: %v", err)
 	}
 
-	lpcWrapper := usecases.NewLPCWrapper(bus, registry)
-	monitoringWrapper := usecases.NewMonitoringWrapper(bus, registry)
+	lpcWrapper := usecases.NewLPCWrapper(bus, registry, cfg.Logging.DebugEvents)
+	monitoringWrapper := usecases.NewMonitoringWrapper(bus, registry, cfg.Logging.DebugEvents)
 
 	if err := bridgeSvc.Setup(); err != nil {
 		log.Fatalf("setting up EEBUS service: %v", err)

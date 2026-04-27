@@ -24,6 +24,11 @@ def _is_unimplemented(err: grpc.aio.AioRpcError) -> bool:
     return err.code() == grpc.StatusCode.UNIMPLEMENTED
 
 
+def _is_not_found(err: grpc.aio.AioRpcError) -> bool:
+    """Return True when gRPC reports missing entity/data for requested SKI."""
+    return err.code() == grpc.StatusCode.NOT_FOUND
+
+
 class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator that manages gRPC connection and data updates."""
 
@@ -72,28 +77,56 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
 
             monitoring_stub = proto_stubs.MonitoringServiceStub(channel)
+            request = proto_stubs.DeviceRequest(ski=self.ski)
+            fallback_request = proto_stubs.DeviceRequest(ski="")
+            used_fallback = False
 
             try:
                 power = await monitoring_stub.GetPowerConsumption(
-                    proto_stubs.DeviceRequest(ski=self.ski), timeout=RPC_TIMEOUT
+                    request, timeout=RPC_TIMEOUT
                 )
                 data["power_watts"] = power.watts
-            except grpc.aio.AioRpcError:
-                data["power_watts"] = None
+            except grpc.aio.AioRpcError as err:
+                if _is_not_found(err):
+                    try:
+                        power = await monitoring_stub.GetPowerConsumption(
+                            fallback_request, timeout=RPC_TIMEOUT
+                        )
+                        data["power_watts"] = power.watts
+                        used_fallback = True
+                    except grpc.aio.AioRpcError:
+                        data["power_watts"] = None
+                else:
+                    data["power_watts"] = None
             except Exception:  # noqa: BLE001
                 _LOGGER.exception("Failed to read power consumption")
                 data["power_watts"] = None
 
             try:
                 measurements = await monitoring_stub.GetMeasurements(
-                    proto_stubs.DeviceRequest(ski=self.ski), timeout=RPC_TIMEOUT
+                    request, timeout=RPC_TIMEOUT
                 )
                 scoped_energy = self._extract_scoped_energy_kwh(measurements.measurements)
                 data["energy_consumed_heating_kwh"] = scoped_energy["heating"]
                 data["energy_consumed_dhw_kwh"] = scoped_energy["dhw"]
-            except grpc.aio.AioRpcError:
-                data["energy_consumed_heating_kwh"] = None
-                data["energy_consumed_dhw_kwh"] = None
+            except grpc.aio.AioRpcError as err:
+                if _is_not_found(err):
+                    try:
+                        measurements = await monitoring_stub.GetMeasurements(
+                            fallback_request, timeout=RPC_TIMEOUT
+                        )
+                        scoped_energy = self._extract_scoped_energy_kwh(
+                            measurements.measurements
+                        )
+                        data["energy_consumed_heating_kwh"] = scoped_energy["heating"]
+                        data["energy_consumed_dhw_kwh"] = scoped_energy["dhw"]
+                        used_fallback = True
+                    except grpc.aio.AioRpcError:
+                        data["energy_consumed_heating_kwh"] = None
+                        data["energy_consumed_dhw_kwh"] = None
+                else:
+                    data["energy_consumed_heating_kwh"] = None
+                    data["energy_consumed_dhw_kwh"] = None
             except Exception:  # noqa: BLE001
                 _LOGGER.exception("Failed to read scoped energy measurements")
                 data["energy_consumed_heating_kwh"] = None
@@ -101,11 +134,21 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             try:
                 energy = await monitoring_stub.GetEnergyConsumed(
-                    proto_stubs.DeviceRequest(ski=self.ski), timeout=RPC_TIMEOUT
+                    request, timeout=RPC_TIMEOUT
                 )
                 data["energy_consumed_kwh"] = energy.kilowatt_hours
-            except grpc.aio.AioRpcError:
-                data["energy_consumed_kwh"] = None
+            except grpc.aio.AioRpcError as err:
+                if _is_not_found(err):
+                    try:
+                        energy = await monitoring_stub.GetEnergyConsumed(
+                            fallback_request, timeout=RPC_TIMEOUT
+                        )
+                        data["energy_consumed_kwh"] = energy.kilowatt_hours
+                        used_fallback = True
+                    except grpc.aio.AioRpcError:
+                        data["energy_consumed_kwh"] = None
+                else:
+                    data["energy_consumed_kwh"] = None
             except Exception:  # noqa: BLE001
                 _LOGGER.exception("Failed to read total consumed energy")
                 data["energy_consumed_kwh"] = None
@@ -113,7 +156,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 lpc_stub = proto_stubs.LPCServiceStub(channel)
                 limit = await lpc_stub.GetConsumptionLimit(
-                    proto_stubs.DeviceRequest(ski=self.ski), timeout=RPC_TIMEOUT
+                    request, timeout=RPC_TIMEOUT
                 )
                 data["consumption_limit"] = {
                     "value_watts": limit.value_watts,
@@ -122,14 +165,31 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 }
                 self._lpc_supported = True
             except grpc.aio.AioRpcError as err:
-                data["consumption_limit"] = None
-                if _is_unimplemented(err):
-                    self._lpc_supported = False
+                if _is_not_found(err):
+                    try:
+                        limit = await lpc_stub.GetConsumptionLimit(
+                            fallback_request, timeout=RPC_TIMEOUT
+                        )
+                        data["consumption_limit"] = {
+                            "value_watts": limit.value_watts,
+                            "is_active": limit.is_active,
+                            "is_changeable": limit.is_changeable,
+                        }
+                        self._lpc_supported = True
+                        used_fallback = True
+                    except grpc.aio.AioRpcError as retry_err:
+                        data["consumption_limit"] = None
+                        if _is_unimplemented(retry_err):
+                            self._lpc_supported = False
+                else:
+                    data["consumption_limit"] = None
+                    if _is_unimplemented(err):
+                        self._lpc_supported = False
 
             try:
                 lpc_stub = proto_stubs.LPCServiceStub(channel)
                 failsafe = await lpc_stub.GetFailsafeLimit(
-                    proto_stubs.DeviceRequest(ski=self.ski), timeout=RPC_TIMEOUT
+                    request, timeout=RPC_TIMEOUT
                 )
                 data["failsafe_limit"] = {
                     "value_watts": failsafe.value_watts,
@@ -137,14 +197,30 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 }
                 self._failsafe_supported = True
             except grpc.aio.AioRpcError as err:
-                data["failsafe_limit"] = None
-                if _is_unimplemented(err):
-                    self._failsafe_supported = False
+                if _is_not_found(err):
+                    try:
+                        failsafe = await lpc_stub.GetFailsafeLimit(
+                            fallback_request, timeout=RPC_TIMEOUT
+                        )
+                        data["failsafe_limit"] = {
+                            "value_watts": failsafe.value_watts,
+                            "duration_minimum_seconds": failsafe.duration_minimum_seconds,
+                        }
+                        self._failsafe_supported = True
+                        used_fallback = True
+                    except grpc.aio.AioRpcError as retry_err:
+                        data["failsafe_limit"] = None
+                        if _is_unimplemented(retry_err):
+                            self._failsafe_supported = False
+                else:
+                    data["failsafe_limit"] = None
+                    if _is_unimplemented(err):
+                        self._failsafe_supported = False
 
             try:
                 lpc_stub = proto_stubs.LPCServiceStub(channel)
                 hb = await lpc_stub.GetHeartbeatStatus(
-                    proto_stubs.DeviceRequest(ski=self.ski), timeout=RPC_TIMEOUT
+                    request, timeout=RPC_TIMEOUT
                 )
                 data["heartbeat_status"] = {
                     "running": hb.running,
@@ -153,11 +229,30 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 data["heartbeat_supported"] = True
                 self._heartbeat_supported = True
             except grpc.aio.AioRpcError as err:
-                data["heartbeat_status"] = None
-                data["heartbeat_supported"] = self._heartbeat_supported
-                if _is_unimplemented(err):
-                    data["heartbeat_supported"] = False
-                    self._heartbeat_supported = False
+                if _is_not_found(err):
+                    try:
+                        hb = await lpc_stub.GetHeartbeatStatus(
+                            fallback_request, timeout=RPC_TIMEOUT
+                        )
+                        data["heartbeat_status"] = {
+                            "running": hb.running,
+                            "within_duration": hb.within_duration,
+                        }
+                        data["heartbeat_supported"] = True
+                        self._heartbeat_supported = True
+                        used_fallback = True
+                    except grpc.aio.AioRpcError as retry_err:
+                        data["heartbeat_status"] = None
+                        data["heartbeat_supported"] = self._heartbeat_supported
+                        if _is_unimplemented(retry_err):
+                            data["heartbeat_supported"] = False
+                            self._heartbeat_supported = False
+                else:
+                    data["heartbeat_status"] = None
+                    data["heartbeat_supported"] = self._heartbeat_supported
+                    if _is_unimplemented(err):
+                        data["heartbeat_supported"] = False
+                        self._heartbeat_supported = False
             except Exception:  # noqa: BLE001
                 _LOGGER.exception("Failed to read heartbeat status")
                 data["heartbeat_status"] = None
@@ -165,6 +260,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             data["lpc_supported"] = self._lpc_supported
             data["failsafe_supported"] = self._failsafe_supported
+            data["read_fallback_used"] = used_fallback
 
             if self._was_unavailable:
                 _LOGGER.info("EEBUS bridge connection restored at %s:%s", self.host, self.port)

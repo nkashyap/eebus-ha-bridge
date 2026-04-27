@@ -51,6 +51,9 @@ certificates:
 	if cfg.Certificates.StoragePath != "/tmp/certs" {
 		t.Errorf("Certificates.StoragePath = %q, want /tmp/certs", cfg.Certificates.StoragePath)
 	}
+	if cfg.Logging.DebugEvents {
+		t.Error("Logging.DebugEvents = true, want false")
+	}
 }
 
 func TestDefaults(t *testing.T) {
@@ -75,6 +78,9 @@ func TestDefaults(t *testing.T) {
 	if !cfg.Certificates.AutoGenerate {
 		t.Error("default Certificates.AutoGenerate = false, want true")
 	}
+	if cfg.Logging.DebugEvents {
+		t.Error("default Logging.DebugEvents = true, want false")
+	}
 }
 
 func TestEnvOverride(t *testing.T) {
@@ -90,6 +96,7 @@ grpc:
 
 	t.Setenv("EEBUS_GRPC_PORT", "9999")
 	t.Setenv("EEBUS_SERIAL", "env-serial")
+	t.Setenv("EEBUS_DEBUG_EVENTS", "true")
 
 	cfg, err := config.LoadFromFile(path)
 	if err != nil {
@@ -101,5 +108,8 @@ grpc:
 	}
 	if cfg.EEBUS.Serial != "env-serial" {
 		t.Errorf("env override EEBUS.Serial = %q, want env-serial", cfg.EEBUS.Serial)
+	}
+	if !cfg.Logging.DebugEvents {
+		t.Error("env override Logging.DebugEvents = false, want true")
 	}
 }

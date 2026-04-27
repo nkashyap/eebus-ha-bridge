@@ -36,7 +36,10 @@ brand: eebus-bridge
 model: eebus-bridge
 serial: ha-001
 auto_generate_certificates: true
+debug_events: false
 ```
+
+Set `debug_events: true` to log each incoming EEBUS callback/use-case event for troubleshooting.
 
 ## Notes
 

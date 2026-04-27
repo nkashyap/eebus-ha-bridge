@@ -22,6 +22,7 @@ options:
   model: eebus-bridge
   serial: ha-001
   auto_generate_certificates: true
+  debug_events: false
 schema:
   grpc_port: port
   eebus_port: port
@@ -30,3 +31,4 @@ schema:
   model: str
   serial: str
   auto_generate_certificates: bool
+  debug_events: bool

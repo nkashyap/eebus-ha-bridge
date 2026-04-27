@@ -22,6 +22,9 @@ eebus:
 certificates:
   auto_generate: $(bashio::config 'auto_generate_certificates')
   storage_path: "${CERT_DIR}"
+
+logging:
+  debug_events: $(bashio::config 'debug_events')
 EOF
 
 bashio::log.info "Generated bridge config at ${CFG_FILE}"

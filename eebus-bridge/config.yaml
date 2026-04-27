@@ -11,3 +11,6 @@ eebus:
 certificates:
   auto_generate: true
   storage_path: "/data/certs"
+
+logging:
+  debug_events: false
