@@ -63,7 +63,12 @@ class EebusConfigFlow(ConfigFlow, domain=DOMAIN):
                 await stub.GetStatus(proto_stubs.Empty())
                 await channel.close()
                 return await self.async_step_device()
-            except Exception:
+            except Exception as err:
+                _LOGGER.exception(
+                    "Failed to connect to EEBUS bridge during config flow at %s:%s",
+                    self._host,
+                    self._port,
+                )
                 errors["base"] = "cannot_connect"
 
         return self.async_show_form(
@@ -119,6 +124,11 @@ class EebusConfigFlow(ConfigFlow, domain=DOMAIN):
                     },
                 )
             except Exception:
+                _LOGGER.exception(
+                    "Failed to connect to EEBUS bridge during reconfigure at %s:%s",
+                    user_input[CONF_GRPC_HOST],
+                    user_input[CONF_GRPC_PORT],
+                )
                 errors["base"] = "cannot_connect"
 
         entry = self._get_reconfigure_entry()
