@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4
+
+- Bump add-on and integration versions to force fresh Supervisor/HACS artifact resolution
+- Keep runtime diagnostics improvements from 0.1.3
+
 ## 0.1.3
 
 - Add explicit startup log lines for `debug_events` state to confirm debug logging is active at runtime
