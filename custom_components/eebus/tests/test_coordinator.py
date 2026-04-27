@@ -35,3 +35,21 @@ def test_coordinator_init():
     assert coordinator.ski == "test-ski"
     assert coordinator._channel is None
     assert coordinator._was_unavailable is False
+
+
+def test_extract_scoped_energy_kwh():
+    """Test extraction of heating and DHW scoped counters."""
+
+    class _Measurement:
+        def __init__(self, measurement_type: str, value: float) -> None:
+            self.type = measurement_type
+            self.value = value
+
+    measurements = [
+        _Measurement("energy_consumed_space_heating", 12.5),
+        _Measurement("energy_consumed_domestic_hot_water", 4.2),
+    ]
+
+    extracted = EebusCoordinator._extract_scoped_energy_kwh(measurements)
+    assert extracted["heating"] == 12.5
+    assert extracted["dhw"] == 4.2

@@ -62,22 +62,43 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "local_ski": status.local_ski,
             }
 
+            monitoring_stub = proto_stubs.MonitoringServiceStub(channel)
+
             try:
-                monitoring_stub = proto_stubs.MonitoringServiceStub(channel)
                 power = await monitoring_stub.GetPowerConsumption(
                     proto_stubs.DeviceRequest(ski=self.ski)
                 )
                 data["power_watts"] = power.watts
             except grpc.aio.AioRpcError:
                 data["power_watts"] = None
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("Failed to read power consumption")
+                data["power_watts"] = None
 
             try:
-                monitoring_stub = proto_stubs.MonitoringServiceStub(channel)
+                measurements = await monitoring_stub.GetMeasurements(
+                    proto_stubs.DeviceRequest(ski=self.ski)
+                )
+                scoped_energy = self._extract_scoped_energy_kwh(measurements.measurements)
+                data["energy_consumed_heating_kwh"] = scoped_energy["heating"]
+                data["energy_consumed_dhw_kwh"] = scoped_energy["dhw"]
+            except grpc.aio.AioRpcError:
+                data["energy_consumed_heating_kwh"] = None
+                data["energy_consumed_dhw_kwh"] = None
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("Failed to read scoped energy measurements")
+                data["energy_consumed_heating_kwh"] = None
+                data["energy_consumed_dhw_kwh"] = None
+
+            try:
                 energy = await monitoring_stub.GetEnergyConsumed(
                     proto_stubs.DeviceRequest(ski=self.ski)
                 )
                 data["energy_consumed_kwh"] = energy.kilowatt_hours
             except grpc.aio.AioRpcError:
+                data["energy_consumed_kwh"] = None
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("Failed to read total consumed energy")
                 data["energy_consumed_kwh"] = None
 
             try:
@@ -122,6 +143,32 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._was_unavailable = True
 
             raise UpdateFailed(f"gRPC error: {err}") from err
+
+    @staticmethod
+    def _extract_scoped_energy_kwh(measurements: list[Any]) -> dict[str, float | None]:
+        """Extract Vaillant/EEBUS scoped counters for heating and domestic hot water."""
+        result: dict[str, float | None] = {"heating": None, "dhw": None}
+        for measurement in measurements:
+            measurement_type = str(getattr(measurement, "type", "")).lower().strip()
+            if not measurement_type:
+                continue
+            normalized = measurement_type.replace("-", "_").replace(" ", "_")
+            value = getattr(measurement, "value", None)
+            if value is None:
+                continue
+
+            # Vaillant uses separate thermal storage contexts for heating and DHW.
+            if (
+                "energy" in normalized
+                and ("domestic_hot_water" in normalized or "hot_water" in normalized or "dhw" in normalized)
+            ):
+                result["dhw"] = value
+                continue
+
+            if "energy" in normalized and ("heating" in normalized or "space_heating" in normalized):
+                result["heating"] = value
+
+        return result
 
     async def async_write_lpc_limit(self, value_watts: float) -> None:
         """Write LPC consumption limit via gRPC."""
