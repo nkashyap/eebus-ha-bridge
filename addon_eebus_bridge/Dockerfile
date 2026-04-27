@@ -2,13 +2,16 @@ ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest
 
 FROM golang:1.26-alpine AS builder
 
-ARG EEBUS_HA_BRIDGE_REF=main
+ARG BUILD_VERSION=dev
+ARG EEBUS_HA_BRIDGE_REF=""
 ARG EEBUS_HA_BRIDGE_REPO=https://github.com/nkashyap/eebus-ha-bridge.git
 
 RUN apk add --no-cache git
 
 WORKDIR /src
-RUN git clone --depth 1 --branch "${EEBUS_HA_BRIDGE_REF}" "${EEBUS_HA_BRIDGE_REPO}" repo
+RUN REF="${EEBUS_HA_BRIDGE_REF:-${BUILD_VERSION}}" && \
+    echo "Building eebus-bridge from ref: ${REF}" && \
+    git clone --depth 1 --branch "${REF}" "${EEBUS_HA_BRIDGE_REPO}" repo
 
 WORKDIR /src/repo/eebus-bridge
 RUN go mod download

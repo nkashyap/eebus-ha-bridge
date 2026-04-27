@@ -47,3 +47,5 @@ Set `debug_events: true` to log each incoming EEBUS callback/use-case event for 
   bridge host from Home Assistant Core. Use the HA host LAN IP instead.
 - Certificates persist in `/data/certs`.
 - The bridge config is generated on startup from add-on options.
+- The add-on image builds the Go bridge from the repository ref matching the
+  add-on version (`BUILD_VERSION`), ensuring deterministic rebuilds for released versions.
