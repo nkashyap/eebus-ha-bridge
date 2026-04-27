@@ -23,6 +23,7 @@ try:
         MeasurementEntry,
         PowerMeasurement,
     )
+    from .generated.eebus.v1.device_service_pb2 import RegisterSKIRequest  # noqa: F401
     from .generated.eebus.v1.device_service_pb2_grpc import DeviceServiceStub  # noqa: F401
     from .generated.eebus.v1.lpc_service_pb2 import (  # noqa: F401
         WriteFailsafeLimitRequest,

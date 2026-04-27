@@ -74,8 +74,12 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             if not self._ski_registered:
                 try:
+                    register_request_cls = getattr(proto_stubs, "RegisterSKIRequest", None)
+                    if register_request_cls is None:
+                        from .generated.eebus.v1.device_service_pb2 import RegisterSKIRequest as register_request_cls
+
                     await device_stub.RegisterRemoteSKI(
-                        proto_stubs.RegisterSKIRequest(ski=self.ski), timeout=RPC_TIMEOUT
+                        register_request_cls(ski=self.ski), timeout=RPC_TIMEOUT
                     )
                     self._ski_registered = True
                     _LOGGER.info("Registered remote SKI %s with bridge", self.ski)
