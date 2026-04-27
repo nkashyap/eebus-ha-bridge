@@ -72,6 +72,15 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 data["power_watts"] = None
 
             try:
+                monitoring_stub = proto_stubs.MonitoringServiceStub(channel)
+                energy = await monitoring_stub.GetEnergyConsumed(
+                    proto_stubs.DeviceRequest(ski=self.ski)
+                )
+                data["energy_consumed_kwh"] = energy.kilowatt_hours
+            except grpc.aio.AioRpcError:
+                data["energy_consumed_kwh"] = None
+
+            try:
                 lpc_stub = proto_stubs.LPCServiceStub(channel)
                 limit = await lpc_stub.GetConsumptionLimit(
                     proto_stubs.DeviceRequest(ski=self.ski)

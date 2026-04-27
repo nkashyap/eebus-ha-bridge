@@ -40,11 +40,12 @@
       "message": "gRPC-Fehler: {error}"
     }
   },
-  "entity": {
-    "sensor": {
-      "power_consumption": { "name": "Leistungsaufnahme" },
-      "consumption_limit": { "name": "Leistungslimit" }
-    },
+    "entity": {
+      "sensor": {
+        "power_consumption": { "name": "Leistungsaufnahme" },
+        "energy_consumed": { "name": "Energieverbrauch" },
+        "consumption_limit": { "name": "Leistungslimit" }
+      },
     "number": {
       "lpc_limit": { "name": "LPC Limit" },
       "failsafe_limit": { "name": "Failsafe Limit" }

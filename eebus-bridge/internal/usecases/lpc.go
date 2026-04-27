@@ -13,13 +13,14 @@ import (
 // LPCWrapper wraps the eebus-go LPC (Limitation of Power Consumption) use case
 // and routes events to the internal EventBus.
 type LPCWrapper struct {
-	uc  *eglpc.LPC
-	bus *eebus.EventBus
+	uc       *eglpc.LPC
+	bus      *eebus.EventBus
+	registry *eebus.DeviceRegistry
 }
 
 // NewLPCWrapper creates a new LPCWrapper. Call Setup() before using the use case.
-func NewLPCWrapper(bus *eebus.EventBus) *LPCWrapper {
-	return &LPCWrapper{bus: bus}
+func NewLPCWrapper(bus *eebus.EventBus, registry *eebus.DeviceRegistry) *LPCWrapper {
+	return &LPCWrapper{bus: bus, registry: registry}
 }
 
 // Setup initialises the underlying eebus-go LPC use case for the given local entity.
@@ -34,7 +35,11 @@ func (w *LPCWrapper) UseCase() *eglpc.LPC {
 
 // HandleEvent is the api.EntityEventCallback passed to eebus-go. It translates
 // eebus-go event types to internal EventBus events.
-func (w *LPCWrapper) HandleEvent(ski string, _ spineapi.DeviceRemoteInterface, _ spineapi.EntityRemoteInterface, event eebusapi.EventType) {
+func (w *LPCWrapper) HandleEvent(ski string, device spineapi.DeviceRemoteInterface, entity spineapi.EntityRemoteInterface, event eebusapi.EventType) {
+	if w.registry != nil {
+		w.registry.UpsertObservation(ski, device, entity, "lpc")
+	}
+
 	var eventType string
 	switch event {
 	case eglpc.DataUpdateLimit:

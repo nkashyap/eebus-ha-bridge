@@ -10,13 +10,14 @@ import (
 // MonitoringWrapper wraps the eebus-go MPC (Monitoring of Power Consumption) use case
 // and routes events to the internal EventBus.
 type MonitoringWrapper struct {
-	uc  *mampc.MPC
-	bus *eebus.EventBus
+	uc       *mampc.MPC
+	bus      *eebus.EventBus
+	registry *eebus.DeviceRegistry
 }
 
 // NewMonitoringWrapper creates a new MonitoringWrapper. Call Setup() before using the use case.
-func NewMonitoringWrapper(bus *eebus.EventBus) *MonitoringWrapper {
-	return &MonitoringWrapper{bus: bus}
+func NewMonitoringWrapper(bus *eebus.EventBus, registry *eebus.DeviceRegistry) *MonitoringWrapper {
+	return &MonitoringWrapper{bus: bus, registry: registry}
 }
 
 // Setup initialises the underlying eebus-go MPC use case for the given local entity.
@@ -31,7 +32,11 @@ func (w *MonitoringWrapper) UseCase() *mampc.MPC {
 
 // HandleEvent is the api.EntityEventCallback passed to eebus-go. It translates
 // eebus-go event types to internal EventBus events.
-func (w *MonitoringWrapper) HandleEvent(ski string, _ spineapi.DeviceRemoteInterface, _ spineapi.EntityRemoteInterface, event eebusapi.EventType) {
+func (w *MonitoringWrapper) HandleEvent(ski string, device spineapi.DeviceRemoteInterface, entity spineapi.EntityRemoteInterface, event eebusapi.EventType) {
+	if w.registry != nil {
+		w.registry.UpsertObservation(ski, device, entity, "monitoring")
+	}
+
 	var eventType string
 	switch event {
 	case mampc.DataUpdatePower:

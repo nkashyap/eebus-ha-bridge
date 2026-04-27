@@ -35,6 +35,51 @@ func (r *DeviceRegistry) AddDevice(ski string, info DeviceInfo) {
 	r.mu.Unlock()
 }
 
+func (r *DeviceRegistry) UpsertObservation(
+	ski string,
+	remoteDevice spineapi.DeviceRemoteInterface,
+	remoteEntity spineapi.EntityRemoteInterface,
+	useCase string,
+) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	info := r.devices[ski]
+	info.SKI = ski
+
+	if remoteDevice != nil {
+		info.RemoteDevice = remoteDevice
+	}
+
+	if remoteEntity != nil {
+		alreadyPresent := false
+		for _, existing := range info.RemoteEntities {
+			if existing == remoteEntity {
+				alreadyPresent = true
+				break
+			}
+		}
+		if !alreadyPresent {
+			info.RemoteEntities = append(info.RemoteEntities, remoteEntity)
+		}
+	}
+
+	if useCase != "" {
+		alreadyPresent := false
+		for _, existing := range info.UseCases {
+			if existing == useCase {
+				alreadyPresent = true
+				break
+			}
+		}
+		if !alreadyPresent {
+			info.UseCases = append(info.UseCases, useCase)
+		}
+	}
+
+	r.devices[ski] = info
+}
+
 func (r *DeviceRegistry) RemoveDevice(ski string) {
 	r.mu.Lock()
 	delete(r.devices, ski)

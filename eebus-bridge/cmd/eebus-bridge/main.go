@@ -40,14 +40,15 @@ func main() {
 	log.Printf("Local SKI: %s", ski)
 
 	bus := eebus.NewEventBus()
+	registry := eebus.NewDeviceRegistry()
 
 	bridgeSvc, err := eebus.NewBridgeService(cfg, cert, bus)
 	if err != nil {
 		log.Fatalf("creating bridge service: %v", err)
 	}
 
-	lpcWrapper := usecases.NewLPCWrapper(bus)
-	monitoringWrapper := usecases.NewMonitoringWrapper(bus)
+	lpcWrapper := usecases.NewLPCWrapper(bus, registry)
+	monitoringWrapper := usecases.NewMonitoringWrapper(bus, registry)
 
 	if err := bridgeSvc.Setup(); err != nil {
 		log.Fatalf("setting up EEBUS service: %v", err)
@@ -59,9 +60,9 @@ func main() {
 
 	grpcSrv := bridgegrpc.NewServer(cfg.GRPC.Port)
 
-	deviceSvc := bridgegrpc.NewDeviceService(bridgeSvc.Callbacks(), bus, ski)
-	lpcSvc := bridgegrpc.NewLPCService(lpcWrapper, bus)
-	monitoringSvc := bridgegrpc.NewMonitoringService(monitoringWrapper, bus)
+	deviceSvc := bridgegrpc.NewDeviceService(bridgeSvc.Callbacks(), bus, ski, registry)
+	lpcSvc := bridgegrpc.NewLPCService(lpcWrapper, bus, registry)
+	monitoringSvc := bridgegrpc.NewMonitoringService(monitoringWrapper, bus, registry)
 
 	pb.RegisterDeviceServiceServer(grpcSrv.GRPCServer(), deviceSvc)
 	pb.RegisterLPCServiceServer(grpcSrv.GRPCServer(), lpcSvc)
