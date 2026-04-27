@@ -1,7 +1,7 @@
 name: EEBUS Bridge
 slug: eebus_bridge
 description: Local EEBUS bridge service for Vaillant VR920/VR921/VR940f gateways
-version: "0.1.2"
+version: "0.1.3"
 url: https://github.com/nkashyap/eebus-ha-bridge
 startup: services
 boot: auto

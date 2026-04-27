@@ -55,6 +55,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._heartbeat_supported: bool | None = None
         self._lpc_supported: bool | None = None
         self._failsafe_supported: bool | None = None
+        self._ski_registered: bool = False
 
     async def _ensure_channel(self) -> grpc.aio.Channel:
         """Create or return existing gRPC channel."""
@@ -71,9 +72,21 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             device_stub = proto_stubs.DeviceServiceStub(channel)
             status = await device_stub.GetStatus(proto_stubs.Empty())
 
+            if not self._ski_registered:
+                try:
+                    await device_stub.RegisterRemoteSKI(
+                        proto_stubs.RegisterSKIRequest(ski=self.ski), timeout=RPC_TIMEOUT
+                    )
+                    self._ski_registered = True
+                    _LOGGER.info("Registered remote SKI %s with bridge", self.ski)
+                except grpc.aio.AioRpcError as err:
+                    # Retry in next polling cycle until the bridge accepts registration.
+                    _LOGGER.debug("Remote SKI registration pending for %s: %s", self.ski, err)
+
             data: dict[str, Any] = {
                 "connected": status.running,
                 "local_ski": status.local_ski,
+                "ski_registered": self._ski_registered,
             }
 
             monitoring_stub = proto_stubs.MonitoringServiceStub(channel)

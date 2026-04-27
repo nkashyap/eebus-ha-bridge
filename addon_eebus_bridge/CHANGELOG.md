@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+
+- Add explicit startup log lines for `debug_events` state to confirm debug logging is active at runtime
+- Continue version alignment between add-on and custom integration
+
 ## 0.1.2
 
 - Bump add-on and integration versions to align rebuilt artifacts with latest fixes

@@ -23,6 +23,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("loading config: %v", err)
 	}
+	log.Printf("EEBUS debug_events=%t", cfg.Logging.DebugEvents)
 
 	cert, err := certs.EnsureCertificate(
 		cfg.Certificates.CertFile,
@@ -80,6 +81,9 @@ func main() {
 
 	bridgeSvc.Start()
 	log.Println("EEBUS bridge started")
+	if cfg.Logging.DebugEvents {
+		log.Println("[DEBUG] EEBUS event debug logging enabled; waiting for incoming callbacks")
+	}
 
 	go func() {
 		ch := bus.Subscribe()
