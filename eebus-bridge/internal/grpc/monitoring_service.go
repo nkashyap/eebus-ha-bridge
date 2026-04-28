@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	spineapi "github.com/enbility/spine-go/api"
@@ -32,12 +33,7 @@ func (s *MonitoringService) GetPowerConsumption(_ context.Context, req *pb.Devic
 	if s.monitoring == nil {
 		return nil, status.Error(codes.Unavailable, "monitoring use case not initialized")
 	}
-	entity, err := s.resolveEntity(req.Ski)
-	if err != nil {
-		log.Printf("[DEBUG] Monitoring.GetPowerConsumption resolveEntity failed: requested_ski=%s err=%v", req.Ski, err)
-		return nil, err
-	}
-	value, err := s.monitoring.Power(entity)
+	value, err := s.readPower(req.Ski)
 	if err != nil {
 		log.Printf("[DEBUG] Monitoring.GetPowerConsumption read failed: requested_ski=%s err=%v", req.Ski, err)
 		return nil, status.Errorf(codes.Internal, "reading power: %v", err)
@@ -56,12 +52,7 @@ func (s *MonitoringService) GetEnergyConsumed(_ context.Context, req *pb.DeviceR
 	if s.monitoring == nil {
 		return nil, status.Error(codes.Unavailable, "monitoring use case not initialized")
 	}
-	entity, err := s.resolveEntity(req.Ski)
-	if err != nil {
-		log.Printf("[DEBUG] Monitoring.GetEnergyConsumed resolveEntity failed: requested_ski=%s err=%v", req.Ski, err)
-		return nil, err
-	}
-	value, err := s.monitoring.EnergyConsumed(entity)
+	value, err := s.readEnergyConsumed(req.Ski)
 	if err != nil {
 		log.Printf("[DEBUG] Monitoring.GetEnergyConsumed read failed: requested_ski=%s err=%v", req.Ski, err)
 		return nil, status.Errorf(codes.Internal, "reading energy: %v", err)
@@ -80,16 +71,10 @@ func (s *MonitoringService) GetMeasurements(_ context.Context, req *pb.DeviceReq
 	if s.monitoring == nil {
 		return nil, status.Error(codes.Unavailable, "monitoring use case not initialized")
 	}
-	entity, err := s.resolveEntity(req.Ski)
-	if err != nil {
-		log.Printf("[DEBUG] Monitoring.GetMeasurements resolveEntity failed: requested_ski=%s err=%v", req.Ski, err)
-		return nil, err
-	}
-
 	now := timestamppb.Now()
 	measurements := make([]*pb.MeasurementEntry, 0, 2)
 
-	if value, err := s.monitoring.Power(entity); err == nil {
+	if value, err := s.readPower(req.Ski); err == nil {
 		measurements = append(measurements, &pb.MeasurementEntry{
 			Type:      "power_consumption",
 			Value:     value,
@@ -98,7 +83,7 @@ func (s *MonitoringService) GetMeasurements(_ context.Context, req *pb.DeviceReq
 		})
 	}
 
-	if value, err := s.monitoring.EnergyConsumed(entity); err == nil {
+	if value, err := s.readEnergyConsumed(req.Ski); err == nil {
 		measurements = append(measurements, &pb.MeasurementEntry{
 			Type:      "energy_consumed",
 			Value:     value,
@@ -169,4 +154,60 @@ func (s *MonitoringService) resolveEntity(ski string) (spineapi.EntityRemoteInte
 		return nil, status.Errorf(codes.NotFound, "no remote entity found for ski %s", ski)
 	}
 	return entity, nil
+}
+
+func (s *MonitoringService) readPower(ski string) (float64, error) {
+	entity, err := s.resolveEntity(ski)
+	if err == nil {
+		return s.monitoring.Power(entity)
+	}
+	if status.Code(err) != codes.NotFound {
+		log.Printf("[DEBUG] Monitoring.readPower resolveEntity failed without fallback: requested_ski=%s err=%v", ski, err)
+		return 0, err
+	}
+	log.Printf("[DEBUG] Monitoring.readPower attempting nil-entity fallback: requested_ski=%s", ski)
+	value, fallbackErr := s.safePowerNilEntity()
+	if fallbackErr != nil {
+		log.Printf("[DEBUG] Monitoring.readPower nil-entity fallback failed: requested_ski=%s err=%v", ski, fallbackErr)
+		return 0, err
+	}
+	log.Printf("[DEBUG] Monitoring.readPower nil-entity fallback succeeded: requested_ski=%s watts=%f", ski, value)
+	return value, nil
+}
+
+func (s *MonitoringService) readEnergyConsumed(ski string) (float64, error) {
+	entity, err := s.resolveEntity(ski)
+	if err == nil {
+		return s.monitoring.EnergyConsumed(entity)
+	}
+	if status.Code(err) != codes.NotFound {
+		log.Printf("[DEBUG] Monitoring.readEnergyConsumed resolveEntity failed without fallback: requested_ski=%s err=%v", ski, err)
+		return 0, err
+	}
+	log.Printf("[DEBUG] Monitoring.readEnergyConsumed attempting nil-entity fallback: requested_ski=%s", ski)
+	value, fallbackErr := s.safeEnergyConsumedNilEntity()
+	if fallbackErr != nil {
+		log.Printf("[DEBUG] Monitoring.readEnergyConsumed nil-entity fallback failed: requested_ski=%s err=%v", ski, fallbackErr)
+		return 0, err
+	}
+	log.Printf("[DEBUG] Monitoring.readEnergyConsumed nil-entity fallback succeeded: requested_ski=%s kWh=%f", ski, value)
+	return value, nil
+}
+
+func (s *MonitoringService) safePowerNilEntity() (value float64, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("panic during nil-entity power read: %v", recovered)
+		}
+	}()
+	return s.monitoring.Power(nil)
+}
+
+func (s *MonitoringService) safeEnergyConsumedNilEntity() (value float64, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("panic during nil-entity energy read: %v", recovered)
+		}
+	}()
+	return s.monitoring.EnergyConsumed(nil)
 }

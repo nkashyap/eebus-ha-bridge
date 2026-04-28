@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.6
+
+- Add compatibility fallback for monitoring reads when remote entity mapping is missing (`NOT_FOUND`) to recover power/energy values where possible
+- Keep extensive debug telemetry for SKI registration, entity resolution, and polling summaries
+
 ## 0.1.5
 
 - Add detailed HA-side and bridge-side monitoring debug logs for SKI registration, entity resolution, and read outcomes
