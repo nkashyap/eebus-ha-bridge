@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.7
+
+- Preserve upstream gRPC status codes for monitoring reads (`NotFound` no longer rewrapped as `Internal`)
+- Add debug flags for use-case callbacks to show whether incoming events include remote device/entity references
+
 ## 0.1.6
 
 - Add compatibility fallback for monitoring reads when remote entity mapping is missing (`NOT_FOUND`) to recover power/energy values where possible

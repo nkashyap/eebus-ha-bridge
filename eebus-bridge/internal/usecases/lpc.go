@@ -45,7 +45,13 @@ func (w *LPCWrapper) UseCase() *eglpc.LPC {
 // eebus-go event types to internal EventBus events.
 func (w *LPCWrapper) HandleEvent(ski string, device spineapi.DeviceRemoteInterface, entity spineapi.EntityRemoteInterface, event eebusapi.EventType) {
 	if w.debug {
-		log.Printf("[DEBUG] EEBUS LPC event received: ski=%s event=%s", ski, event)
+		log.Printf(
+			"[DEBUG] EEBUS LPC event received: ski=%s event=%s has_device=%t has_entity=%t",
+			ski,
+			event,
+			device != nil,
+			entity != nil,
+		)
 	}
 
 	if w.registry != nil {

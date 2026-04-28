@@ -36,6 +36,9 @@ func (s *MonitoringService) GetPowerConsumption(_ context.Context, req *pb.Devic
 	value, err := s.readPower(req.Ski)
 	if err != nil {
 		log.Printf("[DEBUG] Monitoring.GetPowerConsumption read failed: requested_ski=%s err=%v", req.Ski, err)
+		if status.Code(err) != codes.Unknown {
+			return nil, err
+		}
 		return nil, status.Errorf(codes.Internal, "reading power: %v", err)
 	}
 	log.Printf("[DEBUG] Monitoring.GetPowerConsumption success: requested_ski=%s watts=%f", req.Ski, value)
@@ -55,6 +58,9 @@ func (s *MonitoringService) GetEnergyConsumed(_ context.Context, req *pb.DeviceR
 	value, err := s.readEnergyConsumed(req.Ski)
 	if err != nil {
 		log.Printf("[DEBUG] Monitoring.GetEnergyConsumed read failed: requested_ski=%s err=%v", req.Ski, err)
+		if status.Code(err) != codes.Unknown {
+			return nil, err
+		}
 		return nil, status.Errorf(codes.Internal, "reading energy: %v", err)
 	}
 	log.Printf("[DEBUG] Monitoring.GetEnergyConsumed success: requested_ski=%s kWh=%f", req.Ski, value)
