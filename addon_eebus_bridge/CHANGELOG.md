@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.10
+
+- Register LPC and Monitoring use cases with the EEBUS service during startup (critical for remote entity compatibility resolution)
+- Add startup confirmation log for use case registration
+
 ## 0.1.8
 
 - Add automatic remote SKI re-registration when repeated monitoring/LPC reads return `NOT_FOUND`
