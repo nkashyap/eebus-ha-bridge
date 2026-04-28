@@ -77,7 +77,7 @@ func (c *Callbacks) ServiceShipIDUpdate(ski string, shipID string) {
 func (c *Callbacks) ServicePairingDetailUpdate(ski string, detail *shipapi.ConnectionStateDetail) {
 	if c.debugEvents {
 		if detail != nil {
-			log.Printf("[DEBUG] EEBUS callback: pairing detail updated: ski=%s state=%s", ski, detail.State())
+			log.Printf("[DEBUG] EEBUS callback: pairing detail updated: ski=%s state=%v", ski, detail.State())
 		} else {
 			log.Printf("[DEBUG] EEBUS callback: pairing detail updated: ski=%s state=<nil>", ski)
 		}

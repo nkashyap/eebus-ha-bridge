@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5
+
+- Add detailed HA-side and bridge-side monitoring debug logs for SKI registration, entity resolution, and read outcomes
+- Fix pairing state debug formatting so connection state transitions render correctly in logs
+
 ## 0.1.4
 
 - Bump add-on and integration versions to force fresh Supervisor/HACS artifact resolution

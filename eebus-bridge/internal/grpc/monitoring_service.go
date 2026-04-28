@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"log"
 
 	spineapi "github.com/enbility/spine-go/api"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -33,12 +34,15 @@ func (s *MonitoringService) GetPowerConsumption(_ context.Context, req *pb.Devic
 	}
 	entity, err := s.resolveEntity(req.Ski)
 	if err != nil {
+		log.Printf("[DEBUG] Monitoring.GetPowerConsumption resolveEntity failed: requested_ski=%s err=%v", req.Ski, err)
 		return nil, err
 	}
 	value, err := s.monitoring.Power(entity)
 	if err != nil {
+		log.Printf("[DEBUG] Monitoring.GetPowerConsumption read failed: requested_ski=%s err=%v", req.Ski, err)
 		return nil, status.Errorf(codes.Internal, "reading power: %v", err)
 	}
+	log.Printf("[DEBUG] Monitoring.GetPowerConsumption success: requested_ski=%s watts=%f", req.Ski, value)
 	return &pb.PowerMeasurement{
 		Watts:     value,
 		Timestamp: timestamppb.Now(),
@@ -54,12 +58,15 @@ func (s *MonitoringService) GetEnergyConsumed(_ context.Context, req *pb.DeviceR
 	}
 	entity, err := s.resolveEntity(req.Ski)
 	if err != nil {
+		log.Printf("[DEBUG] Monitoring.GetEnergyConsumed resolveEntity failed: requested_ski=%s err=%v", req.Ski, err)
 		return nil, err
 	}
 	value, err := s.monitoring.EnergyConsumed(entity)
 	if err != nil {
+		log.Printf("[DEBUG] Monitoring.GetEnergyConsumed read failed: requested_ski=%s err=%v", req.Ski, err)
 		return nil, status.Errorf(codes.Internal, "reading energy: %v", err)
 	}
+	log.Printf("[DEBUG] Monitoring.GetEnergyConsumed success: requested_ski=%s kWh=%f", req.Ski, value)
 	return &pb.EnergyMeasurement{
 		KilowattHours: value,
 		Timestamp:     timestamppb.Now(),
@@ -75,6 +82,7 @@ func (s *MonitoringService) GetMeasurements(_ context.Context, req *pb.DeviceReq
 	}
 	entity, err := s.resolveEntity(req.Ski)
 	if err != nil {
+		log.Printf("[DEBUG] Monitoring.GetMeasurements resolveEntity failed: requested_ski=%s err=%v", req.Ski, err)
 		return nil, err
 	}
 
@@ -100,9 +108,11 @@ func (s *MonitoringService) GetMeasurements(_ context.Context, req *pb.DeviceReq
 	}
 
 	if len(measurements) == 0 {
+		log.Printf("[DEBUG] Monitoring.GetMeasurements produced no entries: requested_ski=%s", req.Ski)
 		return nil, status.Error(codes.NotFound, "no monitoring measurements available for device")
 	}
 
+	log.Printf("[DEBUG] Monitoring.GetMeasurements success: requested_ski=%s entries=%d", req.Ski, len(measurements))
 	return &pb.MeasurementList{Measurements: measurements}, nil
 }
 
@@ -145,10 +155,17 @@ func (s *MonitoringService) resolveEntity(ski string) (spineapi.EntityRemoteInte
 		return nil, status.Error(codes.Unavailable, "device registry not initialized")
 	}
 	entity := s.registry.FirstEntity(ski)
+	if entity == nil {
+		log.Printf("[DEBUG] Monitoring.resolveEntity no entity for requested SKI: requested_ski=%s", ski)
+	}
 	if entity == nil && ski == "" {
 		entity = s.registry.FirstAvailableEntity()
+		if entity != nil {
+			log.Printf("[DEBUG] Monitoring.resolveEntity selected fallback entity for empty SKI request")
+		}
 	}
 	if entity == nil {
+		log.Printf("[DEBUG] Monitoring.resolveEntity returning not found: requested_ski=%s", ski)
 		return nil, status.Errorf(codes.NotFound, "no remote entity found for ski %s", ski)
 	}
 	return entity, nil
