@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.8
+
+- Add automatic remote SKI re-registration when repeated monitoring/LPC reads return `NOT_FOUND`
+- Improve HA coordinator recovery for bridge sessions that lose remote entity mapping after reconnects
+
 ## 0.1.7
 
 - Preserve upstream gRPC status codes for monitoring reads (`NotFound` no longer rewrapped as `Internal`)

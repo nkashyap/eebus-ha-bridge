@@ -17,6 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 
 POLL_INTERVAL = timedelta(seconds=30)
 RPC_TIMEOUT = 10
+RE_REGISTER_NOT_FOUND_STREAK = 4
 
 
 def _is_unimplemented(err: grpc.aio.AioRpcError) -> bool:
@@ -61,6 +62,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._lpc_supported: bool | None = None
         self._failsafe_supported: bool | None = None
         self._ski_registered: bool = False
+        self._not_found_streak: int = 0
 
     async def _ensure_channel(self) -> grpc.aio.Channel:
         """Create or return existing gRPC channel."""
@@ -78,23 +80,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             status = await device_stub.GetStatus(proto_stubs.Empty())
 
             if not self._ski_registered:
-                try:
-                    register_request_cls = getattr(proto_stubs, "RegisterSKIRequest", None)
-                    if register_request_cls is None:
-                        from .generated.eebus.v1.device_service_pb2 import RegisterSKIRequest as register_request_cls
-
-                    await device_stub.RegisterRemoteSKI(
-                        register_request_cls(ski=self.ski), timeout=RPC_TIMEOUT
-                    )
-                    self._ski_registered = True
-                    _LOGGER.info("Registered remote SKI %s with bridge", self.ski)
-                except grpc.aio.AioRpcError as err:
-                    # Retry in next polling cycle until the bridge accepts registration.
-                    _LOGGER.debug(
-                        "Remote SKI registration pending for %s: %s",
-                        self.ski,
-                        _rpc_error_text(err),
-                    )
+                await self._async_register_remote_ski(device_stub, proto_stubs, force=False)
 
             data: dict[str, Any] = {
                 "connected": status.running,
@@ -111,6 +97,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             request = proto_stubs.DeviceRequest(ski=self.ski)
             fallback_request = proto_stubs.DeviceRequest(ski="")
             used_fallback = False
+            saw_not_found = False
 
             try:
                 power = await monitoring_stub.GetPowerConsumption(
@@ -124,6 +111,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             except grpc.aio.AioRpcError as err:
                 if _is_not_found(err):
+                    saw_not_found = True
                     try:
                         power = await monitoring_stub.GetPowerConsumption(
                             fallback_request, timeout=RPC_TIMEOUT
@@ -169,6 +157,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             except grpc.aio.AioRpcError as err:
                 if _is_not_found(err):
+                    saw_not_found = True
                     try:
                         measurements = await monitoring_stub.GetMeasurements(
                             fallback_request, timeout=RPC_TIMEOUT
@@ -219,6 +208,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             except grpc.aio.AioRpcError as err:
                 if _is_not_found(err):
+                    saw_not_found = True
                     try:
                         energy = await monitoring_stub.GetEnergyConsumed(
                             fallback_request, timeout=RPC_TIMEOUT
@@ -268,6 +258,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             except grpc.aio.AioRpcError as err:
                 if _is_not_found(err):
+                    saw_not_found = True
                     try:
                         limit = await lpc_stub.GetConsumptionLimit(
                             fallback_request, timeout=RPC_TIMEOUT
@@ -323,6 +314,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             except grpc.aio.AioRpcError as err:
                 if _is_not_found(err):
+                    saw_not_found = True
                     try:
                         failsafe = await lpc_stub.GetFailsafeLimit(
                             fallback_request, timeout=RPC_TIMEOUT
@@ -377,6 +369,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             except grpc.aio.AioRpcError as err:
                 if _is_not_found(err):
+                    saw_not_found = True
                     try:
                         hb = await lpc_stub.GetHeartbeatStatus(
                             fallback_request, timeout=RPC_TIMEOUT
@@ -424,6 +417,21 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data["lpc_supported"] = self._lpc_supported
             data["failsafe_supported"] = self._failsafe_supported
             data["read_fallback_used"] = used_fallback
+
+            if saw_not_found:
+                self._not_found_streak += 1
+            else:
+                self._not_found_streak = 0
+
+            if self._not_found_streak >= RE_REGISTER_NOT_FOUND_STREAK:
+                _LOGGER.warning(
+                    "EEBUS reads returned NOT_FOUND for %s consecutive polls; forcing remote SKI re-registration for %s",
+                    self._not_found_streak,
+                    self.ski,
+                )
+                await self._async_register_remote_ski(device_stub, proto_stubs, force=True)
+                self._not_found_streak = 0
+
             _LOGGER.debug(
                 "EEBUS poll summary for SKI %s: power=%s energy_total=%s energy_heating=%s energy_dhw=%s fallback=%s",
                 self.ski,
@@ -443,6 +451,7 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self._channel is not None:
                 await self._channel.close()
                 self._channel = None
+            self._not_found_streak = 0
 
             if not self._was_unavailable:
                 _LOGGER.warning(
@@ -451,6 +460,40 @@ class EebusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._was_unavailable = True
 
             raise UpdateFailed(f"gRPC error: {err}") from err
+
+    async def _async_register_remote_ski(
+        self, device_stub: Any, proto_stubs: Any, force: bool
+    ) -> None:
+        """Register remote SKI with bridge, optionally forcing re-registration."""
+        try:
+            register_request_cls = getattr(proto_stubs, "RegisterSKIRequest", None)
+            if register_request_cls is None:
+                from .generated.eebus.v1.device_service_pb2 import (
+                    RegisterSKIRequest as register_request_cls,
+                )
+
+            await device_stub.RegisterRemoteSKI(
+                register_request_cls(ski=self.ski), timeout=RPC_TIMEOUT
+            )
+            self._ski_registered = True
+            if force:
+                _LOGGER.info("Forced re-registration of remote SKI %s with bridge", self.ski)
+            else:
+                _LOGGER.info("Registered remote SKI %s with bridge", self.ski)
+        except grpc.aio.AioRpcError as err:
+            if force:
+                _LOGGER.warning(
+                    "Forced remote SKI re-registration failed for %s: %s",
+                    self.ski,
+                    _rpc_error_text(err),
+                )
+            else:
+                # Retry in next polling cycle until the bridge accepts registration.
+                _LOGGER.debug(
+                    "Remote SKI registration pending for %s: %s",
+                    self.ski,
+                    _rpc_error_text(err),
+                )
 
     @staticmethod
     def _extract_scoped_energy_kwh(measurements: list[Any]) -> dict[str, float | None]:
